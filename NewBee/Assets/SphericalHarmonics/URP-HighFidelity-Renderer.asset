@@ -111,5 +111,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_Active: 1
   settings:
-    sampleCount: 128
+    sampleCount: 4
     intensityScale: 1
