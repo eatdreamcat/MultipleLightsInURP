@@ -112,3 +112,4 @@ MonoBehaviour:
   m_Active: 1
   settings:
     sampleCount: 128
+    intensityScale: 1

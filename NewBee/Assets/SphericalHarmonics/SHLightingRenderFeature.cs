@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using SphericalHarmonics;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -12,12 +13,37 @@ public class SHLightingRenderFeature : ScriptableRendererFeature
     {
         [Range(1, 128)]
         public int sampleCount = 4;
+
+        [Range(0, 1)]
+        public float intensityScale = 1.0f;
     }
     public class SphericalHarmonicLightingRenderPass : ScriptableRenderPass
     {
         private static int _SHLightingCoefficients = Shader.PropertyToID("_SHLightingCoefficients");
         private const int k_Level = 3;
         private const int k_CoefficientsCount = k_Level * k_Level;
+
+        public static List<Vector3> s_SamplerDirs = new()
+        {
+            // 6 samples
+            Vector3.down,
+            Vector3.up,
+            Vector3.forward,
+            Vector3.back,
+            Vector3.left,
+            Vector3.right,
+            
+            // 14 samples
+            Vector3.Normalize(Vector3.forward + Vector3.left + Vector3.up),
+            Vector3.Normalize(Vector3.forward + Vector3.right + Vector3.up),
+            Vector3.Normalize(Vector3.back + Vector3.right + Vector3.up),
+            Vector3.Normalize(Vector3.back + Vector3.left + Vector3.up),
+            Vector3.Normalize(Vector3.forward + Vector3.left + Vector3.down),
+            Vector3.Normalize(Vector3.forward + Vector3.right + Vector3.down),
+            Vector3.Normalize(Vector3.back + Vector3.right + Vector3.down),
+            Vector3.Normalize(Vector3.back + Vector3.left + Vector3.down),
+            
+        };
         
         public static Transform s_Center;
         
@@ -47,7 +73,7 @@ public class SHLightingRenderFeature : ScriptableRendererFeature
                            Mathf.Max(0, Vector3.Dot(direction, -light.transform.forward));
                 case LightType.Point:
                     return light.color * light.intensity *
-                           Mathf.Max(0, Vector3.Dot(direction, (position - light.transform.position).normalized));
+                           Mathf.Max(0, Vector3.Dot(direction, (light.transform.position - position).normalized));
             }
             
             return Color.black;
@@ -75,23 +101,34 @@ public class SHLightingRenderFeature : ScriptableRendererFeature
                     continue;
                 }
 
-                var dir = light.transform.position - s_Center.position;
-                for (int sampleIndex = 0; sampleIndex < m_FeatureSettings.sampleCount; ++sampleIndex)
+                for (int dirIndex = 0; dirIndex < s_SamplerDirs.Count; ++dirIndex)
                 {
-                    var sampleDir = SphericalHarmonicsUtils.GetCosineWeightedRandomDirection(
-                        Random.value, Random.value, dir, s_Center.position, out var pdf
-                    );
-                    var radiance = SampleLight(sampleDir, s_Center.position, light) * pdf;
+                    var dir = s_SamplerDirs[dirIndex];
+                    Color irradiance = Color.black;
+                    for (int sampleIndex = 0; sampleIndex < m_FeatureSettings.sampleCount; ++sampleIndex)
+                    {
+                        var sampleDir = SphericalHarmonicsUtils.GetCosineWeightedRandomDirection(
+                            HaltonSequence.Get((sampleIndex & 1023) + 1, 2), 
+                            HaltonSequence.Get((sampleIndex & 1023) + 1, 3), 
+                            dir, 
+                            s_Center.position,
+                            out var pdf
+                        );
+                        var radiance = SampleLight(sampleDir, s_Center.position, light) / pdf 
+                            * m_FeatureSettings.intensityScale / m_FeatureSettings.sampleCount;
+                        irradiance += radiance;
+                    }
+                
                     for (int coefficientIndex = 0; coefficientIndex < k_CoefficientsCount; ++coefficientIndex)
                     {
                         m_Coefficients[coefficientIndex].x +=
-                            SphericalHarmonicsUtils.SHBasicFull(sampleDir, coefficientIndex) * radiance.r *
+                            SphericalHarmonicsUtils.SHBasicFull(dir, coefficientIndex) * irradiance.r *
                             SphericalHarmonicsUtils.BasicConstant(coefficientIndex);
                         m_Coefficients[coefficientIndex].y +=
-                            SphericalHarmonicsUtils.SHBasicFull(sampleDir, coefficientIndex) * radiance.g *
+                            SphericalHarmonicsUtils.SHBasicFull(dir, coefficientIndex) * irradiance.g *
                             SphericalHarmonicsUtils.BasicConstant(coefficientIndex);
                         m_Coefficients[coefficientIndex].z +=
-                            SphericalHarmonicsUtils.SHBasicFull(sampleDir, coefficientIndex) * radiance.b *
+                            SphericalHarmonicsUtils.SHBasicFull(dir, coefficientIndex) * irradiance.b *
                             SphericalHarmonicsUtils.BasicConstant(coefficientIndex);
                     }
                 }

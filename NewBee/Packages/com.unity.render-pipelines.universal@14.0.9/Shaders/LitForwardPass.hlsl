@@ -16,7 +16,7 @@
 #endif
 
 // keep this file in sync with LitGBufferPass.hlsl
-float4 _SHLightingCoefficients[9];
+
 
 struct Attributes
 {
@@ -195,55 +195,6 @@ Varyings LitPassVertex(Attributes input)
     return output;
 }
 
-half3 SampleMultipleLightsFromSH(half3 normalWS)
-{
-        // l= 0, m = 0
-        half3 res = _SHLightingCoefficients[0].xyz;
-  
-        // l = 1, m = 1
-        res += half3(    dot(normalWS.x, _SHLightingCoefficients[1].x),
-                         dot(normalWS.x, _SHLightingCoefficients[1].y),
-                         dot(normalWS.x, _SHLightingCoefficients[1].z));
-
-        // l = 1, m = -1
-        res += half3(    dot(normalWS.y, _SHLightingCoefficients[2].x),
-                         dot(normalWS.y, _SHLightingCoefficients[2].y),
-                         dot(normalWS.y, _SHLightingCoefficients[2].z));
-
-        // l = 1, m = 0
-        res += half3(    dot(normalWS.z, _SHLightingCoefficients[3].x),
-                         dot(normalWS.z, _SHLightingCoefficients[3].y),
-                         dot(normalWS.z, _SHLightingCoefficients[3].z));
-
-    
-        // l = 2, m = -2
-        res += half3(    dot(normalWS.y * normalWS.x, _SHLightingCoefficients[4].x),
-                         dot(normalWS.y * normalWS.x, _SHLightingCoefficients[4].y),
-                         dot(normalWS.y * normalWS.x, _SHLightingCoefficients[4].z));
-
-        // l = 2, m = -1
-        res += half3(    dot(normalWS.y * normalWS.z, _SHLightingCoefficients[5].x),
-                         dot(normalWS.y * normalWS.z, _SHLightingCoefficients[5].y),
-                         dot(normalWS.y * normalWS.z, _SHLightingCoefficients[5].z));
-    
-        // l = 2, m = 0
-        res += half3(    dot(3 * normalWS.z * normalWS.z - 1, _SHLightingCoefficients[6].x),
-                         dot(3 * normalWS.z * normalWS.z - 1, _SHLightingCoefficients[6].y),
-                         dot(3 * normalWS.z * normalWS.z - 1, _SHLightingCoefficients[6].z));
-
-        // l = 2, m = 1
-        res += half3(    dot(normalWS.x * normalWS.z, _SHLightingCoefficients[7].x),
-                         dot(normalWS.x * normalWS.z, _SHLightingCoefficients[7].y),
-                         dot(normalWS.x * normalWS.z, _SHLightingCoefficients[7].z));
-
-        // l = 2, m = 2
-        res += half3(    dot(normalWS.x * normalWS.x - normalWS.y * normalWS.y, _SHLightingCoefficients[8].x),
-                         dot(normalWS.x * normalWS.x - normalWS.y * normalWS.y, _SHLightingCoefficients[8].y),
-                         dot(normalWS.x * normalWS.x - normalWS.y * normalWS.y, _SHLightingCoefficients[8].z));
-        
-        return   res;
-}
-
 // Used in Standard (Physically Based) shader
 void LitPassFragment(
     Varyings input
@@ -255,11 +206,6 @@ void LitPassFragment(
 {
     UNITY_SETUP_INSTANCE_ID(input);
     UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
-
-    #if defined(_SH_LIGHTINGS_ON)
-    outColor = half4(SampleMultipleLightsFromSH(normalize(input.normalWS)) , 1.0);
-    return;
-    #endif
     
 #if defined(_PARALLAXMAP)
 #if defined(REQUIRES_TANGENT_SPACE_VIEW_DIR_INTERPOLATOR)

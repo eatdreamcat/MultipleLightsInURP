@@ -8,6 +8,8 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/AmbientOcclusion.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DBuffer.hlsl"
 
+float4 _SHLightingCoefficients[9];
+
 #if defined(LIGHTMAP_ON)
     #define DECLARE_LIGHTMAP_OR_SH(lmName, shName, index) float2 lmName : TEXCOORD##index
     #define OUTPUT_LIGHTMAP_UV(lightmapUV, lightmapScaleOffset, OUT) OUT.xy = lightmapUV.xy * lightmapScaleOffset.xy + lightmapScaleOffset.zw;
@@ -36,13 +38,71 @@ half3 LightingSpecular(half3 lightColor, half3 lightDir, half3 normal, half3 vie
     return lightColor * specularReflection;
 }
 
+half3 SampleMultipleLightsFromSH(half3 normalWS)
+{
+        // l= 0, m = 0
+        half3 res = _SHLightingCoefficients[0].xyz;
+  
+        // l = 1, m = 1
+        res += half3(    dot(normalWS.x, _SHLightingCoefficients[1].x),
+                         dot(normalWS.x, _SHLightingCoefficients[1].y),
+                         dot(normalWS.x, _SHLightingCoefficients[1].z));
+
+        // l = 1, m = -1
+        res += half3(    dot(normalWS.y, _SHLightingCoefficients[2].x),
+                         dot(normalWS.y, _SHLightingCoefficients[2].y),
+                         dot(normalWS.y, _SHLightingCoefficients[2].z));
+
+        // l = 1, m = 0
+        res += half3(    dot(normalWS.z, _SHLightingCoefficients[3].x),
+                         dot(normalWS.z, _SHLightingCoefficients[3].y),
+                         dot(normalWS.z, _SHLightingCoefficients[3].z));
+
+    
+        // l = 2, m = -2
+        res += half3(    dot(normalWS.y * normalWS.x, _SHLightingCoefficients[4].x),
+                         dot(normalWS.y * normalWS.x, _SHLightingCoefficients[4].y),
+                         dot(normalWS.y * normalWS.x, _SHLightingCoefficients[4].z));
+
+        // l = 2, m = -1
+        res += half3(    dot(normalWS.y * normalWS.z, _SHLightingCoefficients[5].x),
+                         dot(normalWS.y * normalWS.z, _SHLightingCoefficients[5].y),
+                         dot(normalWS.y * normalWS.z, _SHLightingCoefficients[5].z));
+    
+        // l = 2, m = 0
+        res += half3(    dot(3 * normalWS.z * normalWS.z - 1, _SHLightingCoefficients[6].x),
+                         dot(3 * normalWS.z * normalWS.z - 1, _SHLightingCoefficients[6].y),
+                         dot(3 * normalWS.z * normalWS.z - 1, _SHLightingCoefficients[6].z));
+
+        // l = 2, m = 1
+        res += half3(    dot(normalWS.x * normalWS.z, _SHLightingCoefficients[7].x),
+                         dot(normalWS.x * normalWS.z, _SHLightingCoefficients[7].y),
+                         dot(normalWS.x * normalWS.z, _SHLightingCoefficients[7].z));
+
+        // l = 2, m = 2
+        res += half3(    dot(normalWS.x * normalWS.x - normalWS.y * normalWS.y, _SHLightingCoefficients[8].x),
+                         dot(normalWS.x * normalWS.x - normalWS.y * normalWS.y, _SHLightingCoefficients[8].y),
+                         dot(normalWS.x * normalWS.x - normalWS.y * normalWS.y, _SHLightingCoefficients[8].z));
+        
+        return res;
+}
+
 half3 LightingPhysicallyBased(BRDFData brdfData, BRDFData brdfDataClearCoat,
     half3 lightColor, half3 lightDirectionWS, half lightAttenuation,
     half3 normalWS, half3 viewDirectionWS,
     half clearCoatMask, bool specularHighlightsOff)
 {
     half NdotL = saturate(dot(normalWS, lightDirectionWS));
+    
     half3 radiance = lightColor * (lightAttenuation * NdotL);
+
+   
+    #if _SH_LIGHTINGS_ON
+
+    radiance += SampleMultipleLightsFromSH(normalWS);
+    
+    #endif
+
 
     half3 brdf = brdfData.diffuse;
 #ifndef _SPECULARHIGHLIGHTS_OFF
@@ -299,6 +359,11 @@ half4 UniversalFragmentPBR(InputData inputData, SurfaceData surfaceData)
                                                               surfaceData.clearCoatMask, specularHighlightsOff);
     }
 
+    #if defined(_SH_LIGHTINGS_ON)
+
+    // dont calculate additional lights
+    
+    #else
     #if defined(_ADDITIONAL_LIGHTS)
     uint pixelLightCount = GetAdditionalLightsCount();
 
@@ -336,6 +401,8 @@ half4 UniversalFragmentPBR(InputData inputData, SurfaceData surfaceData)
 
     #if defined(_ADDITIONAL_LIGHTS_VERTEX)
     lightingData.vertexLightingColor += inputData.vertexLighting * brdfData.diffuse;
+    #endif
+    
     #endif
 
 #if REAL_IS_HALF
